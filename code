@@ -1,0 +1,325 @@
+'use strict';
+ 
+const functions = require('firebase-functions');
+const {WebhookClient} = require('dialogflow-fulfillment');
+const {Card, Suggestion} = require('dialogflow-fulfillment');
+const axios=require("axios");
+ 
+process.env.DEBUG = 'dialogflow:debug';
+ 
+exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, response) => {
+  const agent = new WebhookClient({ request, response });
+  
+  function consulta(agent){
+    let producto = agent.parameters.producto;
+    let modelo = agent.parameters.modelos_de_celular;
+    let marca = agent.parameters.marca_de_celular;
+    let ubicacion = agent.parameters.ubicacion;
+    if (agent.parameters.color == "" ){
+      var color = ("");
+    } else {
+      var color = (" "+agent.parameters.color);
+    }	
+    switch(producto) {
+			case "pantalla":case "manilla":
+				var x = ("una");
+				break;
+			case "case":case "protector":case "hidrogel":
+				var x = ("un");
+				break;
+    }
+    agent.add("Gracias! Voy a darte el precio y detalles.  \nResumiendo, buscas "+x+" "+producto+" para "+marca+" "+modelo+color+" en la ciudad de "+ubicacion+" ¿Esta bien?");
+  }
+
+  function menu(agent){
+    var numero = agent.parameters.number;
+    switch(numero) {
+      case 1:
+        var x = ("case");
+		break;		
+				
+      case 2:
+        var x = ("pantalla");
+		break;		
+				
+      case 3:
+        var x = ("protector");
+		break;		
+				
+      case 4:
+        var x = ("hidrogel");
+		break;
+        
+      case 5:
+        var x = ("agente");
+		break;
+        
+      case 6:
+        var x = ("ubicacion");
+		break;
+    }
+    agent.setFollowupEvent(x);
+  }
+        
+  function confirmacion_consulta(agent){
+    let producto = agent.contexts[0].parameters.producto;
+    agent.setFollowupEvent(producto);
+  }
+
+
+  async function consulta_direccion(agent){
+    let ubicacion=agent.parameters.ubicacion;
+    let respuesta_direccion=await axios.get("https://sheet.best/api/sheets/5c62a447-c97f-4d7e-99db-f9cdd8d06c3b/tabs/Direcciones/ciudad/"+ubicacion);
+    let respuestas_direccion_data=respuesta_direccion.data;
+    if(respuestas_direccion_data.length>0){
+      let respuesta_direccion_data=respuestas_direccion_data[0];
+      agent.add("En "+ubicacion+" estamos ubicados en "+respuesta_direccion_data.direccion);
+    } else{
+      agent.add("Lamentablemente no tenemos tiendas en "+ubicacion);
+    }
+  }
+  
+  
+  async function consulta_case(agent){
+    let marca = agent.contexts[0].parameters.marca_de_celular;
+    let modelo = agent.contexts[0].parameters.modelos_de_celular;
+    let ubicacion = agent.contexts[0].parameters.ubicacion;
+    let color = agent.contexts[0].parameters.color;
+    let respuesta_modelo = await axios.get("https://sheet.best/api/sheets/5c62a447-c97f-4d7e-99db-f9cdd8d06c3b/tabs/"+ubicacion+"/query?modelo="+modelo+"&marca="+marca+"&producto=case&cantidad=__gt(0)");
+    let respuestas_modelos_data = respuesta_modelo.data;
+    if(respuestas_modelos_data.length>0){
+      let respuesta_modelo_data = respuestas_modelos_data[0];
+      let precio = respuesta_modelo_data.precio;
+      if (respuestas_modelos_data.length == 1){
+      var colores = "Excelente! Tenemos solo en color:  \n ";
+      var respuesta = "¿Lo quieres?";
+      } 
+      if (respuestas_modelos_data.length > 1){
+      var colores = "Excelente! Tenemos el case en "+(respuestas_modelos_data.length)+" colores:  \n ";
+      var respuesta = "¿Cuál de estos colores prefieres?";
+      }
+      for (let i=0; i<respuestas_modelos_data.length; i++){
+        colores += "  \n"+respuestas_modelos_data[i].color;
+      }
+      agent.add(colores);
+      agent.add(respuesta);
+    } else {
+      agent.add("Actualmente el case para "+marca+" "+modelo+" en "+ubicacion+" se encuentra agotado");
+    }
+  }
+
+
+  async function confirmacion_pedido_case(agent){
+    let marca = agent.contexts[0].parameters.marca_de_celular;
+    let modelo = agent.contexts[0].parameters.modelos_de_celular;
+    let ubicacion = agent.contexts[0].parameters.ubicacion;
+    let color = agent.parameters.color;
+    let respuesta_modelo = await axios.get("https://sheet.best/api/sheets/5c62a447-c97f-4d7e-99db-f9cdd8d06c3b/tabs/"+ubicacion+"/query?modelo="+modelo+"&marca="+marca+"&producto=case&cantidad=__gt(0)");
+    let respuestas_modelos_data = respuesta_modelo.data;
+    let respuesta_modelo_data = respuestas_modelos_data[0];
+    let precio = respuesta_modelo_data.precio;
+    agent.add("El case para "+marca+" "+modelo+" en color "+color+" esta a "+precio+" Bs. ¿Deseas obtener un código de descuento de 20 Bs?");
+  }
+
+
+  async function registro(agent){
+    let ubicacion = agent.contexts[0].parameters.ubicacion;
+    let marca = agent.contexts[0].parameters.marca_de_celular;
+    let modelo = agent.contexts[0].parameters.modelos_de_celular;
+    let producto = agent.parameters.producto;
+    let color = agent.contexts[0].parameters.color;
+    let nombre = agent.parameters.nombre;
+    let apellido = agent.parameters.apellido;
+    let nro_celular = agent.parameters.nro_celular;
+    if (agent.parameters.calidad_pantallas == "") {
+      let respuesta_modelo = await axios.get("https://sheet.best/api/sheets/58bc5629-8182-4d56-bd4f-c5cefca370f6/tabs/"+ubicacion+"/query?modelo="+modelo+"&marca="+marca+"&cantidad=__gt(0)");
+      let respuestas_modelo_data = respuesta_modelo.data;
+      var calidad = respuestas_modelo_data[0].calidad;
+    } else {
+      var calidad = agent.parameters.calidad_pantallas;
+    }
+    let promocion = agent.contexts[0].parameters.promocion;
+    let ID = Date.now();
+    let estado = "PENDIENTE"
+    let respuesta_direccion=await axios.get("https://sheet.best/api/sheets/5c62a447-c97f-4d7e-99db-f9cdd8d06c3b/tabs/Direcciones/ciudad/"+ubicacion);
+    let respuestas_direccion_data=respuesta_direccion.data;
+    let respuesta_direccion_data=respuestas_direccion_data[0];
+    axios.post("https://sheet.best/api/sheets/068ba2fb-991b-4f6d-8259-4ee0213c9954",{ID,nombre,apellido,nro_celular,producto,color,marca,modelo,ubicacion,calidad,estado,promocion});
+    agent.add("Felicidades! "+nombre+" tu código de descuento es "+ID);
+    agent.add("Tu producto te espera en "+respuesta_direccion_data.direccion);
+    agent.add("Ven antes de las 48hrs para hacerlo válido");
+  }
+
+
+  async function consulta_protector(agent){
+    let marca = agent.contexts[0].parameters.marca_de_celular;
+    let modelo = agent.contexts[0].parameters.modelos_de_celular;
+    let ubicacion = agent.contexts[0].parameters.ubicacion;
+    let respuesta_modelo = await axios.get("https://sheet.best/api/sheets/5c62a447-c97f-4d7e-99db-f9cdd8d06c3b/tabs/"+ubicacion+"/query?modelo="+modelo+"&marca="+marca+"&producto=protector&cantidad=__gt(0)");
+    let respuestas_modelos_data = respuesta_modelo.data;
+    if(respuestas_modelos_data.lenght>0){
+      let respuesta_modelo_data = respuestas_modelos_data[0];
+      agent.add("¡Felicidades! El protector de pantalla para tu "+marca+" "+modelo+" esta DISPONIBLE, el precio es de "+respuesta_modelo_data.precio+"Bs");
+      agent.add("Tu NUEVO PROTECTOR DE VIDRIO te espera en "+respuesta_modelo_data.direccion+" Ven antes que se agote!");
+    } else {
+      agent.add("El protector de vidrio se agotó, pero si contamos con protector hidrogel! Deseas obtener un código de descuento de 20Bs en el protector de hidrogel?");
+    }  
+  }
+
+  
+  async function consulta_pantalla(agent) {
+    let ubicacion = agent.parameters.ubicacion;
+    let modelo = agent.parameters.modelos_de_celular;
+    let marca = agent.parameters.marca_de_celular;
+    let promocion = agent.parameters.promocion;
+    let respuesta_modelo = await axios.get("https://sheet.best/api/sheets/58bc5629-8182-4d56-bd4f-c5cefca370f6/tabs/"+ubicacion+"/query?modelo="+modelo+"&marca="+marca+"&cantidad=__gt(0)");
+    let respuestas_modelo_data = respuesta_modelo.data;
+    if (respuestas_modelo_data.length == 1) {
+      agent.setFollowupEvent("pantalla_calidad");
+    } else if (respuestas_modelo_data.length > 1) {
+      let respuesta_modelo_data = respuestas_modelo_data[0];
+      var calidades = "La pantalla para "+marca+" "+modelo+" en la ciudad de "+ubicacion+" está disponible en "+(respuestas_modelo_data.length)+" calidades:  \n";
+      var respuesta = "¿Qué calidad prefieres?"; 
+      for (let i=0; i<respuestas_modelo_data.length; i++){
+        if (promocion == "promocion" && respuestas_modelo_data[i].precio_compra == "precio promo"){
+          let promo = " - se encuentra en *promocion!*";
+          calidades += "  \n*"+(respuestas_modelo_data[i].calidad)+"* color "+((respuestas_modelo_data[i].color)+promo);
+        } else {
+          calidades += "  \n*"+(respuestas_modelo_data[i].calidad)+"* color "+((respuestas_modelo_data[i].color));
+        }
+      }
+      agent.add(calidades);
+      agent.add(respuesta);
+
+    } else {
+      agent.add("El modelo de pantalla se encuentra agotado");
+    }
+  }
+
+  async function consulta_calidad(agent) {
+    let ubicacion = agent.contexts[0].parameters.ubicacion;
+    let modelo = agent.contexts[0].parameters.modelos_de_celular;
+    let marca = agent.contexts[0].parameters.marca_de_celular;
+    let promocion = agent.contexts[0].parameters.promocion;
+    let respuesta_modelo = await axios.get("https://sheet.best/api/sheets/58bc5629-8182-4d56-bd4f-c5cefca370f6/tabs/"+ubicacion+"/query?modelo="+modelo+"&marca="+marca+"&cantidad=__gt(0)");
+    let respuestas_modelo_data = respuesta_modelo.data;
+    if (respuestas_modelo_data.length == 1) {
+      var calidad = respuestas_modelo_data[0].calidad;
+    } else {
+      var calidad = agent.parameters.calidad_pantallas;
+    }
+    let respuesta_calidad = await axios.get("https://sheet.best/api/sheets/58bc5629-8182-4d56-bd4f-c5cefca370f6/tabs/"+ubicacion+"/query?modelo="+modelo+"&calidad="+calidad+"&marca="+marca+"&cantidad=__gt(0)");
+    let respuesta_calidad_data = respuesta_calidad.data;
+    if (respuestas_modelo_data.length == 1){
+      agent.add("Tenemos la pantalla únicamente en calidad *"+calidad+"* para tu equipo");
+    } 
+    if (respuesta_calidad_data.length > 0){
+      agent.add("El producto se encuentra disponible en:");
+      if (ubicacion == "Cochabamba") {
+        if (promocion == "promocion") {
+          if (respuesta_calidad_data[0].cantidad_aya > 0){
+          agent.add("Tienda centro Ayacucho esq Calama");
+      	  }
+      	  if (respuesta_calidad_data[0].cantidad_este > 0){
+          agent.add("Tienda Ismael Montes Centro Comercial Buenos Aires");
+      	  }
+      	  if (respuesta_calidad_data[0].cantidad_pixel > 0){
+          agent.add("Tienda Pixel Av. America frente al IC Norte");
+      	  }
+          let promo_precio = "El precio normal de la pantalla es de "+(respuesta_calidad_data[0].precio_aya)+" Bs pero por promoción compramos tu pantalla por "+(respuesta_calidad_data[0].precio_compra)+" el costo final seria de "+(respuesta_calidad_data[0].precio_final)+" Bs";
+          agent.add(promo_precio); 
+        } else {
+      	  if (respuesta_calidad_data[0].cantidad_aya > 0){
+          agent.add("Tienda centro Ayacucho esq Calama. El precio es de "+(respuesta_calidad_data[0].precio_aya)+"Bs");
+      	  }
+      	  if (respuesta_calidad_data[0].cantidad_este > 0){
+          agent.add("Tienda Ismael Montes Centro Comercial Buenos Aires. El precio es de "+(respuesta_calidad_data[0].precio_este)+"Bs");
+      	  }
+      	  if (respuesta_calidad_data[0].cantidad_pixel > 0){
+          agent.add("Tienda Pixel Av. America frente al IC Norte. El precio es de "+(respuesta_calidad_data[0].precio_pixel)+"Bs");
+      	  }
+        }
+      } else if (ubicacion == "Sucre") {
+        if (respuesta_calidad_data[0].cantidad_sucre > 0){
+          agent.add("Tienda Sucre plaza principal");
+        }
+        if (respuesta_calidad_data[0].cantidad_sucre_can > 0){
+          agent.add("Tienda Sucre Canis"); 
+        }
+        agent.add("El precio es de "+(respuesta_calidad_data[0].precio)+" Bs");
+      
+      } else if(ubicacion == "Tarija") {
+        agent.add("Tienda Tarija plaza principal");
+        agent.add("El precio es de "+(respuesta_calidad_data[0].precio)+" Bs");
+    
+      } else if(ubicacion == "Potosi") {
+        if (respuesta_calidad_data[0].cantidad_potosi > 0){
+        agent.add("Tienda Potosi plaza principal");  
+        }
+        if (respuesta_calidad_data[0].cantidad_potosi_2 > 0){
+        agent.add("Tienda Potosi 2");  
+        }
+        agent.add("El precio es de "+(respuesta_calidad_data[0].precio)+" Bs");
+    
+      } else if(ubicacion == "Oruro") {
+        if (respuesta_calidad_data[0].cantidad_oruro > 0){
+        agent.add("Tienda Oruro plaza principal");  
+        }
+        if (respuesta_calidad_data[0].cantidad_oruro_can > 0){
+        agent.add("Tienda Oruro Canis");  
+        }
+        agent.add("El precio es de "+(respuesta_calidad_data[0].precio)+" Bs");
+      
+      } else if(ubicacion == "La Paz") {
+        if (respuesta_calidad_data[0].cantidad_la_paz > 0){
+        agent.add("Tienda La Paz. El precio es de "+(respuesta_calidad_data[0].precio_la_paz)+" Bs");
+        }
+      
+      } else if(ubicacion == "Santa Cruz") {
+        if (respuesta_calidad_data[0].cantidad_sc > 0){
+        agent.add("Tienda Santa Cruz 2do anillo. El precio es de "+(respuesta_calidad_data[0].precio_sc)+" Bs");
+        }
+        if (respuesta_calidad_data[0].cantidad_mutu > 0){
+        agent.add("Tienda en la Mutualista. El precio es de "+(respuesta_calidad_data[0].precio_mutu)+" Bs");
+        }
+        if (respuesta_calidad_data[0].cantidad_rmd > 0){
+        agent.add("Tienda en la Ramada. El precio es de "+(respuesta_calidad_data[0].precio_rmd)+" Bs");
+        }
+
+      } else if(ubicacion == "Quillacollo") {
+        agent.add("Tienda Quillacollo Cafergu");
+        agent.add("El precio es de "+(respuesta_calidad_data[0].precio)+" Bs");
+        
+      } else if(ubicacion == "El Alto") {
+        agent.add("Tienda El Alto");
+        agent.add("El precio es de "+(respuesta_calidad_data[0].precio)+" Bs");
+
+      } else if(ubicacion == "Montero") {
+        agent.add("Tienda Montero");
+        agent.add("El precio es de "+(respuesta_calidad_data[0].precio)+" Bs");
+      }
+      if (promocion !== "promocion"){
+        agent.add("El precio inclye la reparación ¿Quiéres un código de descuento de 20Bs ?");
+      } else {
+        agent.add("El precio inclye la reparación ¿Quiéres reservar el servicio?");
+      }
+    } else {
+    agent.add("El producto se encuentra agotado");
+    }
+  }
+
+  let intentMap = new Map();
+  intentMap.set('Bienvenida', consulta);
+  intentMap.set('menu', menu);
+  intentMap.set('consulta', confirmacion_consulta);
+  intentMap.set('case', consulta_case);
+  intentMap.set('protector', consulta_protector);
+  intentMap.set('ubicacion', consulta_direccion);
+  intentMap.set('case_color', confirmacion_pedido_case);
+  intentMap.set('case_color - yes', registro);
+  intentMap.set('pantalla_calidad_yes', registro);
+  intentMap.set('pantalla', consulta_pantalla);
+  intentMap.set('pantalla_calidad', consulta_calidad);
+  
+  agent.handleRequest(intentMap);
+});
