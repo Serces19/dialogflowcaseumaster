@@ -15,7 +15,7 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     let modelo = agent.parameters.modelos_de_celular;
     let marca = agent.parameters.marca_de_celular;
     let ubicacion = agent.parameters.ubicacion;
-    if (agent.parameters.color == "" ){
+    if (agent.parameters.color == ""){
       var color = ("");
     } else {
       var color = (" "+agent.parameters.color);
@@ -32,7 +32,7 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
   }
 
   function menu(agent){
-    var numero = agent.parameters.number;
+    let numero = agent.parameters.number;
     switch(numero) {
       case 1:
         var x = ("case");
@@ -81,10 +81,10 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
   
   
   async function consulta_case(agent){
-    let marca = agent.contexts[0].parameters.marca_de_celular;
-    let modelo = agent.contexts[0].parameters.modelos_de_celular;
-    let ubicacion = agent.contexts[0].parameters.ubicacion;
-    let color = agent.contexts[0].parameters.color;
+    let marca = agent.parameters.marca_de_celular;
+    let modelo = agent.parameters.modelos_de_celular;
+    let ubicacion = agent.parameters.ubicacion;
+    let color = agent.parameters.color;
     let respuesta_modelo = await axios.get("https://sheet.best/api/sheets/5c62a447-c97f-4d7e-99db-f9cdd8d06c3b/tabs/"+ubicacion+"/query?modelo="+modelo+"&marca="+marca+"&producto=case&cantidad=__gt(0)");
     let respuestas_modelos_data = respuesta_modelo.data;
     if(respuestas_modelos_data.length>0){
@@ -105,6 +105,7 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
       agent.add(respuesta);
     } else {
       agent.add("Actualmente el case para "+marca+" "+modelo+" en "+ubicacion+" se encuentra agotado");
+      agent.setContext({ name: "case", lifespan: -1 });
     }
   }
 
@@ -146,7 +147,9 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
     let respuesta_direccion_data=respuestas_direccion_data[0];
     axios.post("https://sheet.best/api/sheets/068ba2fb-991b-4f6d-8259-4ee0213c9954",{ID,nombre,apellido,nro_celular,producto,color,marca,modelo,ubicacion,calidad,estado,promocion});
     agent.add("Felicidades! "+nombre+" tu código de descuento es "+ID);
-    agent.add("Tu producto te espera en "+respuesta_direccion_data.direccion);
+    if (producto == "case"){
+      agent.add("Tu producto te espera en "+respuesta_direccion_data.direccion);
+    }
     agent.add("Ven antes de las 48hrs para hacerlo válido");
   }
 
@@ -230,13 +233,13 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
           agent.add(promo_precio); 
         } else {
       	  if (respuesta_calidad_data[0].cantidad_aya > 0){
-          agent.add("Tienda centro Ayacucho esq Calama. El precio es de "+(respuesta_calidad_data[0].precio_aya)+"Bs");
+          agent.add("Tienda centro Ayacucho esq Calama. El precio es de "+(respuesta_calidad_data[0].precio_aya)+"Bs e incluye el servicio del cambio");
       	  }
       	  if (respuesta_calidad_data[0].cantidad_este > 0){
-          agent.add("Tienda Ismael Montes Centro Comercial Buenos Aires. El precio es de "+(respuesta_calidad_data[0].precio_este)+"Bs");
+          agent.add("Tienda Ismael Montes Centro Comercial Buenos Aires. El precio es de "+(respuesta_calidad_data[0].precio_este)+"Bs e incluye el servicio del cambio");
       	  }
       	  if (respuesta_calidad_data[0].cantidad_pixel > 0){
-          agent.add("Tienda Pixel Av. America frente al IC Norte. El precio es de "+(respuesta_calidad_data[0].precio_pixel)+"Bs");
+          agent.add("Tienda Pixel Av. America frente al IC Norte. El precio es de "+(respuesta_calidad_data[0].precio_pixel)+"Bs e incluye el servicio del cambio");
       	  }
         }
       } else if (ubicacion == "Sucre") {
@@ -299,9 +302,9 @@ exports.dialogflowFirebaseFulfillment = functions.https.onRequest((request, resp
         agent.add("El precio es de "+(respuesta_calidad_data[0].precio)+" Bs");
       }
       if (promocion !== "promocion"){
-        agent.add("El precio inclye la reparación ¿Quiéres un código de descuento de 20Bs ?");
+        agent.add("¿Quiéres un código de descuento de 20Bs ?");
       } else {
-        agent.add("El precio inclye la reparación ¿Quiéres reservar el servicio?");
+        agent.add("¿Quiéres reservar el servicio?");
       }
     } else {
     agent.add("El producto se encuentra agotado");
